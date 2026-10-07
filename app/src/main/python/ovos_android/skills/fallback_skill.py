@@ -66,26 +66,43 @@ class FallbackSkill(OVOSSkill):
             pass
         return None
 
+    def _query_wikipedia(self, query: str) -> Optional[str]:
+        """الاستعلام من موسوعة ويكيبيديا العربية للأسئلة المعرفية والعامة"""
+        try:
+            clean_q = re.sub(r'^(ما هو|ما هي|من هو|من هي|عرف|اشرح|اين يقع|ماذا عن|عن|كم|كيف|ماهو|ماهي)\s*', '', query.strip()).strip()
+            clean_q = re.sub(r'[^\w\s]', '', clean_q).strip()
+            if not clean_q or len(clean_q) < 2:
+                return None
+            search_url = f"https://ar.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(clean_q)}&utf8=1&format=json"
+            req = urllib.request.Request(search_url, headers={"User-Agent": "BYD-DiLink-VoiceAssistant/2.1"})
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read(65536).decode("utf-8"))
+                results = data.get("query", {}).get("search", [])
+                if not results:
+                    return None
+                title = results[0]["title"]
+
+            sum_url = f"https://ar.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(title)}"
+            s_req = urllib.request.Request(sum_url, headers={"User-Agent": "BYD-DiLink-VoiceAssistant/2.1"})
+            with urllib.request.urlopen(s_req, timeout=3.0) as s_resp:
+                s_data = json.loads(s_resp.read(65536).decode("utf-8"))
+                extract = s_data.get("extract", "").strip()
+                if extract:
+                    sentences = re.split(r'[\.\n]\s*', extract)
+                    res = '. '.join([s.strip() for s in sentences[:2] if len(s.strip()) > 10]) + '.'
+                    return res
+        except Exception:
+            pass
+        return None
+
     def handle_fallback(self, message: Message) -> None:
-        """معالجة التراجع: محاولة البحث عبر الإنترنت أولاً ثم قاعدة البيانات المحلية"""
+        """معالجة التراجع: فحص قاعدة المعرفة المحلية المباشرة أولاً ثم البحث عبر ويكيبيديا وDuckDuckGo"""
         utterance = message.data.get("utterance", "")
         if not utterance:
             self.speak(TextSanitizer.clean_for_speech(random.choice(self.polite_fallbacks)))
             return
 
-        # 1. الاستعلام عبر Wolfram Alpha إن كان مفعلًا
-        wolfram_result = self._query_wolfram_alpha(utterance)
-        if wolfram_result:
-            self.speak(TextSanitizer.clean_for_speech(wolfram_result))
-            return
-
-        # 2. الاستعلام عبر DuckDuckGo
-        ddg_result = self._query_duckduckgo(utterance)
-        if ddg_result:
-            self.speak(TextSanitizer.clean_for_speech(ddg_result))
-            return
-
-        # 3. التراجع لقاعدة الأسئلة والأجوبة المحلية
+        # 1. فحص قاعدة الأسئلة والأجوبة المحلية المباشرة عند وجود تطابق عالي
         words = set(re.sub(r'[^\w\s]', '', utterance).split())
         best_match = None
         best_score = 0
@@ -99,5 +116,24 @@ class FallbackSkill(OVOSSkill):
 
         if best_match and best_score >= 2:
             self.speak(TextSanitizer.clean_for_speech(best_match["response"]))
-        else:
-            self.speak(TextSanitizer.clean_for_speech(random.choice(self.polite_fallbacks)))
+            return
+
+        # 2. الاستعلام عبر ويكيبيديا العربية
+        wiki_result = self._query_wikipedia(utterance)
+        if wiki_result:
+            self.speak(TextSanitizer.clean_for_speech(wiki_result))
+            return
+
+        # 3. الاستعلام عبر Wolfram Alpha إن كان مفعلًا
+        wolfram_result = self._query_wolfram_alpha(utterance)
+        if wolfram_result:
+            self.speak(TextSanitizer.clean_for_speech(wolfram_result))
+            return
+
+        # 4. الاستعلام عبر DuckDuckGo
+        ddg_result = self._query_duckduckgo(utterance)
+        if ddg_result:
+            self.speak(TextSanitizer.clean_for_speech(ddg_result))
+            return
+
+        self.speak(TextSanitizer.clean_for_speech(random.choice(self.polite_fallbacks)))
