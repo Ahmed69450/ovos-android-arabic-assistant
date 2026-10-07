@@ -11,24 +11,53 @@ from ..skill import OVOSSkill, intent_handler
 from ..message import Message
 from ..text_sanitizer import TextSanitizer
 
+ARABIC_QUERY_STOPWORDS = {
+    "ما", "ماذا", "من", "هل", "كيف", "اين", "متى", "كم", "لماذا", "هو", "هي", "هم",
+    "في", "على", "عن", "من", "الى", "الي", "مع", "هذا", "هذه", "ذلك", "تلك", "ان",
+    "انني", "كان", "كانت", "يكون", "تكون", "شنو", "شلون", "منو", "وين", "ليش", "هسا",
+    "اريد", "اعطني", "انطيني", "حدثني", "اشرح", "صف", "عرف", "الف", "اكتب", "سويلي", "يا"
+}
+
+def _normalize_word(w: str) -> str:
+    """تنقية وتوحيد الكلمة العربية وإزالة السوابق"""
+    w = re.sub(r'[\u064B-\u065F\u0670\u0640]', '', w)
+    w = re.sub(r'[إأآا]', 'ا', w)
+    w = re.sub(r'[يى]', 'ي', w)
+    w = re.sub(r'ة', 'ه', w)
+    for p in ('وال', 'فال', 'بال', 'كال', 'لل', 'ال', 'و', 'ف', 'ب', 'ل', 'ك'):
+        if w.startswith(p) and len(w) - len(p) >= 3:
+            return w[len(p):]
+    return w
+
 def find_best_response_in_cluster(utterance: str, qa_list: List[Dict[str, str]], fallback_responses: List[str]) -> str:
-    """إيجاد الإجابة الأكثر ملائمة لسؤال المستخدم بالاعتماد على تشابه الكلمات والرموز مع التنقية الصارمة"""
+    """
+    إيجاد الإجابة الأكثر دلالية لسؤال المستخدم بالاعتماد على الأوزان المعنوية للكلمات
+    وتجاوز التنوع اللفظي والسوابق وحروف الجر
+    """
     if not qa_list:
         raw = random.choice(fallback_responses) if fallback_responses else "تم استلام طلبك بنجاح."
         return TextSanitizer.clean_for_speech(raw)
 
-    words = set(re.sub(r'[^\w\s]', '', utterance).split())
+    clean_raw = re.sub(r'[^\w\s]', ' ', utterance)
+    raw_words = [w.strip() for w in clean_raw.split() if w.strip()]
+    content_roots = {_normalize_word(w) for w in raw_words if w not in ARABIC_QUERY_STOPWORDS}
+
     best_item = None
-    best_overlap = 0
+    best_score = 0.0
 
     for item in qa_list:
-        q_words = set(re.sub(r'[^\w\s]', '', item.get("instruction", "")).split())
-        overlap = len(words.intersection(q_words))
-        if overlap > best_overlap:
-            best_overlap = overlap
+        q_text = item.get("instruction", "")
+        q_clean = re.sub(r'[^\w\s]', ' ', q_text)
+        q_raw_words = [w.strip() for w in q_clean.split() if w.strip()]
+        q_roots = {_normalize_word(w) for w in q_raw_words if w not in ARABIC_QUERY_STOPWORDS}
+
+        # احتساب نقاط التطابق المعنوي (Semantic Content Match)
+        overlap = len(content_roots.intersection(q_roots))
+        if overlap > best_score:
+            best_score = overlap
             best_item = item
 
-    if best_item and best_overlap >= 2:
+    if best_item and best_score >= 1.0:
         return TextSanitizer.clean_for_speech(best_item["response"])
     elif fallback_responses:
         return TextSanitizer.clean_for_speech(random.choice(fallback_responses))

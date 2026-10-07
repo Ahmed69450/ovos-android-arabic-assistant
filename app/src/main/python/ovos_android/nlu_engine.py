@@ -12,6 +12,14 @@ import math
 from typing import Dict, Any, List, Optional, Tuple
 
 
+def strip_arabic_prefix(w: str) -> str:
+    """إزالة الزوائد والروابط الشائعة (و، ف، ب، ك، ل، ال، لل، فال، بال، وال)"""
+    for p in ('وال', 'فال', 'بال', 'كال', 'لل', 'ال', 'و', 'ف', 'ب', 'ل', 'ك'):
+        if w.startswith(p) and len(w) - len(p) >= 3:
+            return w[len(p):]
+    return w
+
+
 def levenshtein_similarity(s1: str, s2: str) -> float:
     """حساب نسبة التشابه المعيارية بمسافة ليفنشتاين [0.0 - 1.0]"""
     if not s1 or not s2:
@@ -158,9 +166,14 @@ class ArabicNLUEngine:
         self.is_loaded = True
 
     def _tokenize(self, text: str) -> List[str]:
-        """تفكيك الجملة إلى Unigrams و Bigrams"""
+        """تفكيك الجملة إلى Unigrams و Bigrams مع دعم الجذور الخالية من السوابق"""
         words = text.split()
         tokens = list(words)
+        for w in words:
+            stripped = strip_arabic_prefix(w)
+            if stripped != w and stripped not in tokens:
+                tokens.append(stripped)
+
         if self.ngram_range[1] >= 2 and len(words) > 1:
             for i in range(len(words) - 1):
                 tokens.append(f"{words[i]} {words[i+1]}")
@@ -174,13 +187,36 @@ class ArabicNLUEngine:
         best_intent = None
         best_score = 0.0
 
-        # مرتكزات دلالية سريعة ومميزة للتعرف الفوري والتعامل مع أخطاء نطق الميكروفون في السيارة
+        # مرتكزات دلالية سريعة ومميزة للتعرف الفوري والتعامل مع مختلف اللهجات وصيغ الأسئلة
         intent_anchors = {
-            "weather_skill": ["طقس", "الطقس", "جو", "الجو", "حراره", "الحراره", "مطر", "امطار", "رياح", "مناخ"],
-            "stop_skill": ["توقف", "اسكت", "اخرس", "الغاء", "صمت", "كفى", "قف", "صامت", "انهاء"],
-            "time_date_skill": ["ساعه", "الساعه", "وقت", "الوقت", "تاريخ"],
-            "greeting_skill": ["مرحبا", "سلام", "السلام", "صباح الخير", "مساء الخير", "اهلا", "تحياتي"],
-            "assistant_info_skill": ["من انت", "اسمك", "عن نفسك", "قدراتك", "وظيفتك"]
+            "stop_skill": [
+                "توقف", "اسكت", "اخرس", "الغاء", "صمت", "كفى", "قف", "صامت", "انهاء",
+                "كافي", "خلاص", "اصمت", "وقف"
+            ],
+            "language_translation_skill": [
+                "ترجم", "ترجمه", "ترجملي", "مرادف", "اعراب"
+            ],
+            "creative_writing_skill": [
+                "قصه", "قصيده", "شعر", "روايه", "حكايه", "الف لي", "اكتب قصه", "سويلي قصه"
+            ],
+            "math_logic_skill": [
+                "احسب", "معادله", "رياضيات", "حساب", "ضرب", "قسمه", "جمع", "طرح", "حاصل ضرب", "كم يساوي"
+            ],
+            "weather_skill": [
+                "طقس", "الطقس", "جو", "الجو", "حراره", "الحراره", "مطر", "امطار",
+                "رياح", "مناخ", "بروده", "غيم", "غيوم", "مشمس", "تمطر", "حار", "بارد", "صحو"
+            ],
+            "time_date_skill": [
+                "ساعه", "الساعه", "وقت", "الوقت", "تاريخ", "التاريخ", "هسا", "الحين", "تاريخ اليوم"
+            ],
+            "assistant_info_skill": [
+                "من انت", "منو انت", "اسمك", "عن نفسك", "قدراتك", "وظيفتك", "شغلك",
+                "مين انت", "من صنعك", "عرفني بيك", "عرف بحالك", "تكدر تسوي"
+            ],
+            "greeting_skill": [
+                "مرحبا", "سلام", "السلام", "صباح الخير", "مساء الخير", "اهلا", "تحياتي",
+                "شلونك", "شخبارك", "كيفك", "هلا والله", "هلا وغلا", "حياك"
+            ]
         }
 
         for intent, anchors in intent_anchors.items():
@@ -189,9 +225,11 @@ class ArabicNLUEngine:
                 if f" {norm_a} " in f" {cleaned_text} ":
                     return intent, 0.95
                 for w in words:
-                    if len(w) >= 3 and len(norm_a) >= 3 and abs(len(w) - len(norm_a)) <= 1:
-                        if levenshtein_similarity(w, norm_a) >= 0.75:
-                            return intent, 0.92
+                    w_cand = [w, strip_arabic_prefix(w)]
+                    for cand in w_cand:
+                        if len(cand) >= 3 and len(norm_a) >= 3 and abs(len(cand) - len(norm_a)) <= 1:
+                            if levenshtein_similarity(cand, norm_a) >= 0.75:
+                                return intent, 0.92
 
         # 2. مطابقة كامل العبارة مع الأنماط المخزنة
         for intent, patterns in self.intent_patterns.items():
@@ -293,23 +331,25 @@ class ArabicNLUEngine:
                 "match_type": "out_of_vocab"
             }
 
-        vec = [0.0] * len(self.vocab)
+        # استدلال متناثر فائق السرعة وبدون استهلاك للذاكرة (Zero Allocations Sparse Dot-Product)
+        tf_dict = {}
         for term, cnt in counts.items():
             idx = self.vocab[term]
             tf = (1.0 + math.log(cnt)) if self.sublinear_tf else float(cnt)
-            vec[idx] = tf * self.idf[idx]
+            tf_dict[term] = tf * self.idf[idx]
 
-        norm = math.sqrt(sum(v * v for v in vec))
+        norm = math.sqrt(sum(v * v for v in tf_dict.values()))
         if norm > 0:
-            vec = [v / norm for v in vec]
+            for term in tf_dict:
+                tf_dict[term] /= norm
 
         logits = []
         for c_idx in range(len(self.classes)):
             score = self.bias[c_idx]
             c_weights = self.weights[c_idx]
-            for term in counts:
+            for term, val in tf_dict.items():
                 idx = self.vocab[term]
-                score += c_weights[idx] * vec[idx]
+                score += c_weights[idx] * val
             logits.append(score)
 
         max_logit = max(logits)
