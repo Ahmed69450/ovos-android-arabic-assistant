@@ -9,11 +9,13 @@ import random
 from typing import List, Dict, Any, Optional
 from ..skill import OVOSSkill, intent_handler
 from ..message import Message
+from ..text_sanitizer import TextSanitizer
 
 def find_best_response_in_cluster(utterance: str, qa_list: List[Dict[str, str]], fallback_responses: List[str]) -> str:
-    """إيجاد الإجابة الأكثر ملائمة لسؤال المستخدم بالاعتماد على تشابه الكلمات والرموز"""
+    """إيجاد الإجابة الأكثر ملائمة لسؤال المستخدم بالاعتماد على تشابه الكلمات والرموز مع التنقية الصارمة"""
     if not qa_list:
-        return random.choice(fallback_responses) if fallback_responses else "تم استلام طلبك بنجاح."
+        raw = random.choice(fallback_responses) if fallback_responses else "تم استلام طلبك بنجاح."
+        return TextSanitizer.clean_for_speech(raw)
 
     words = set(re.sub(r'[^\w\s]', '', utterance).split())
     best_item = None
@@ -27,12 +29,12 @@ def find_best_response_in_cluster(utterance: str, qa_list: List[Dict[str, str]],
             best_item = item
 
     if best_item and best_overlap >= 2:
-        return best_item["response"]
+        return TextSanitizer.clean_for_speech(best_item["response"])
     elif fallback_responses:
-        return random.choice(fallback_responses)
+        return TextSanitizer.clean_for_speech(random.choice(fallback_responses))
     elif best_item:
-        return best_item["response"]
-    return qa_list[0]["response"]
+        return TextSanitizer.clean_for_speech(best_item["response"])
+    return TextSanitizer.clean_for_speech(qa_list[0]["response"])
 
 
 class HealthWellnessSkill(OVOSSkill):
@@ -114,7 +116,7 @@ class MathLogicSkill(OVOSSkill):
 
             if res is not None:
                 res_str = f"{res:.2f}".rstrip('0').rstrip('.')
-                self.speak(f"ناتج العملية الحسابية هو: {res_str}")
+                self.speak(TextSanitizer.clean_for_speech(f"ناتج العملية الحسابية هو: {res_str}"))
                 return
 
         resp = find_best_response_in_cluster(utt, self.qa_pairs, self.default_responses)
