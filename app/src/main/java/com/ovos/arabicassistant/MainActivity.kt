@@ -207,7 +207,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             text = message
             textSize = 15f
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.black))
-            lineSpacingExtra = 4f
+            setLineSpacing(4f, 1f)
         }
         layout.addView(textView)
         card.addView(layout)
