@@ -84,7 +84,7 @@ jobs:
         if [[ "$GITHUB_REF_VAL" == refs/tags/* ]]; then
           echo "tag=$GITHUB_REF_NAME_VAL" >> "$GITHUB_OUTPUT"
         else
-          echo "tag=v1.0.0" >> "$GITHUB_OUTPUT"
+          echo "tag=v2.1.0" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Publish GitHub Release
@@ -93,14 +93,13 @@ jobs:
         tag_name: ${{ steps.release_info.outputs.tag }}
         name: "OVOS Arabic Assistant ${{ steps.release_info.outputs.tag }}"
         body: |
-          ### المساعد الصوتي العربي (OVOS Voice Assistant v2.0.0 - BYD DiLink Edition)
-          تحديث معماري شامل لنظام المساعد الصوتي المخصص لسيارات BYD DiLink:
+          ### المساعد الصوتي العربي (OVOS Voice Assistant v2.1.0 - BYD DiLink Edition)
+          تحديث ذكاء اصطناعي شامل لنظام المساعد الصوتي المخصص لسيارات BYD DiLink:
           
-          - **المعمارية الصوتية:** الاستماع المستمر في الخلفية عبر Vosk STT (16kHz Offline) ومحرك النطق الطبيعي Piper TTS مع Audio Ducking.
-          - **محرك الفهم اللغوي (NLU):** دمج خوارزمية Levenshtein Distance للمطابقة التقريبية مع مصفوفات TF-IDF لتجاوز الأخطاء الإملائية.
-          - **استخراج الكيانات (NER):** محرك محلي سريع لاستخراج المدن والتواريخ والأرقام.
-          - **ذاكرة السياق (FSM):** آلة حالات منتهية لدعم الحوار التتابعي متعدد الجولات.
-          - **الخدمات الحية والتنقية:** طقس فوري عبر Open-Meteo، بحث ذكي عبر DuckDuckGo، وأداة TextSanitizer لتنقية النصوص الصارمة.
+          - **تدريب موسع بقاعدة بيانات 14,000 نموذج:** تعزيز ذكاء المساعد بقاعدة معرفية تضم آلاف الأسئلة والأجوبة في العلوم والرياضيات والتاريخ والصحة.
+          - **فهم دلالي متقدم للهجات العربية:** خوارزمية ذكية لاستخلاص النوايا بدون الحاجة لصيغ أسئلة حرفية مع معالجة السوابق اللغوية.
+          - **استدلال فائق السرعة وخفة المعالج:** خوارزمية Sparse Dot-Product لاستهلاك شبه معدوم لموارد المعالج (أقل من 4 ملي ثانية).
+          - **المعمارية الصوتية الآمنة:** استماع مستمر عبر Vosk STT ونطق محلي كامل Piper TTS بدون خوادم سحابية.
         files: |
           app-debug.apk
           app-debug.apk.sha256
