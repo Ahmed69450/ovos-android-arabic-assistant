@@ -41,7 +41,7 @@ class FallbackSkill(OVOSSkill):
             url = f"https://api.duckduckgo.com/?q={encoded_q}&format=json&no_html=1&skip_disambig=1"
             req = urllib.request.Request(url, headers={"User-Agent": "BYD-DiLink-VoiceAssistant/2.0"})
             with urllib.request.urlopen(req, timeout=3.5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+                data = json.loads(resp.read(65536).decode("utf-8"))
                 abstract = data.get("AbstractText", "").strip()
                 if abstract:
                     return abstract
@@ -61,7 +61,7 @@ class FallbackSkill(OVOSSkill):
             url = f"https://api.wolframalpha.com/v1/spoken?appid={self.wolfram_app_id}&i={encoded_q}"
             req = urllib.request.Request(url, headers={"User-Agent": "BYD-DiLink-VoiceAssistant/2.0"})
             with urllib.request.urlopen(req, timeout=3.5) as resp:
-                return resp.read().decode("utf-8").strip()
+                return resp.read(65536).decode("utf-8").strip()
         except Exception:
             pass
         return None

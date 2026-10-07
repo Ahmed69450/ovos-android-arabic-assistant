@@ -91,7 +91,7 @@ class WeatherSkill(OVOSSkill):
             url = f"https://geocoding-api.open-meteo.com/v1/search?name={encoded_city}&count=1&language=ar&format=json"
             req = urllib.request.Request(url, headers={"User-Agent": "BYD-DiLink-VoiceAssistant/2.0"})
             with urllib.request.urlopen(req, timeout=3.5) as response:
-                data = json.loads(response.read().decode("utf-8"))
+                data = json.loads(response.read(65536).decode("utf-8"))
                 results = data.get("results")
                 if results and len(results) > 0:
                     first = results[0]
@@ -104,14 +104,19 @@ class WeatherSkill(OVOSSkill):
     def _fetch_open_meteo(self, lat: float, lon: float) -> Optional[Dict[str, Any]]:
         """جلب البيانات اللحظية للطقس من Open-Meteo Forecast API"""
         try:
+            # التحقق الدفاعي من حدود الإحداثيات الجغرافية (CWE-20)
+            if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+                return None
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                return None
             url = (
-                f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+                f"https://api.open-meteo.com/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}"
                 f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
                 f"&wind_speed_unit=kmh"
             )
             req = urllib.request.Request(url, headers={"User-Agent": "BYD-DiLink-VoiceAssistant/2.0"})
             with urllib.request.urlopen(req, timeout=3.5) as response:
-                return json.loads(response.read().decode("utf-8"))
+                return json.loads(response.read(65536).decode("utf-8"))
         except Exception:
             return None
 
