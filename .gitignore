@@ -32,3 +32,9 @@ ovos-core/
 .vscode/
 .DS_Store
 Thumbs.db
+.env*
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
