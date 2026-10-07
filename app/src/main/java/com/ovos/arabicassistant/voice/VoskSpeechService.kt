@@ -100,6 +100,8 @@ class VoskSpeechService(
             )
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                audioRecord?.release()
+                audioRecord = null
                 listener.onError("تعذر تهيئة مسجل الصوت AudioRecord")
                 return
             }
@@ -153,8 +155,12 @@ class VoskSpeechService(
                 }
             }
         } catch (e: SecurityException) {
+            audioRecord?.release()
+            audioRecord = null
             listener.onError("صلاحية الميكروفون RECORD_AUDIO غير ممنوحة")
         } catch (e: Exception) {
+            audioRecord?.release()
+            audioRecord = null
             listener.onError("خطأ أثناء بدء التسجيل: ${e.message}")
         }
     }

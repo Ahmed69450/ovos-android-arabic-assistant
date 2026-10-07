@@ -66,11 +66,12 @@ def process_utterance(utterance_text: str) -> str:
         result = _router_instance.process_utterance(utterance_text)
         return json.dumps(result, ensure_ascii=False)
     except Exception as e:
+        _safe_log(f"Error during process_utterance: {str(e)}")
         return json.dumps({
-            "response": "حدث خطأ داخلي أثناء معالجة الأمر الصوتي.",
+            "response": "حدث خطأ غير متوقع أثناء معالجة الأمر.",
             "intent": "error",
             "confidence": 0.0,
-            "error": str(e)
+            "error": "Internal processing error"
         }, ensure_ascii=False)
 
 def get_speech_response(utterance_text: str) -> str:

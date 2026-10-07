@@ -84,7 +84,7 @@ class OvosAssistantEngine private constructor(private val context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
             OvosResult(
-                response = "حدث خطأ أثناء معالجة الأمر محلياً: ${e.localizedMessage}",
+                response = "حدث خطأ غير متوقع أثناء معالجة الأمر محلياً.",
                 intent = "error",
                 confidence = 0f,
                 utterance = utterance
