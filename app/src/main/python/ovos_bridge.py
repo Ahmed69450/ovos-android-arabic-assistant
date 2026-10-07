@@ -5,12 +5,28 @@
 """
 
 import os
+import sys
 import json
 from typing import Optional
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 from ovos_android.skill_router import SkillRouter
 
 _router_instance: Optional[SkillRouter] = None
+
+def _safe_log(msg: str) -> None:
+    try:
+        print(msg)
+    except Exception:
+        try:
+            sys.stdout.buffer.write((msg + "\n").encode("utf-8", errors="replace"))
+        except Exception:
+            pass
 
 def initialize(model_weights_path: str, intents_data_path: Optional[str] = None) -> bool:
     """
@@ -25,17 +41,17 @@ def initialize(model_weights_path: str, intents_data_path: Optional[str] = None)
             model_weights_path=model_weights_path,
             intents_data_path=intents_data_path
         )
-        print("تمت تهيئة محرك OpenVoiceOS بنجاح في بيئة أندرويد!")
+        _safe_log("تمت تهيئة محرك OpenVoiceOS بنجاح في بيئة أندرويد!")
         return True
     except Exception as e:
-        print(f"فشل في تهيئة محرك OVOS: {str(e)}")
+        _safe_log(f"فشل في تهيئة محرك OVOS: {str(e)}")
         return False
 
 def process_utterance(utterance_text: str) -> str:
     """
     معالجة النص المنطوق من المستخدم وإرجاع النتيجة بتنسيق JSON لكود Kotlin
     :param utterance_text: جملة المستخدم باللغة العربية
-    :return: نص JSON يحتوي على response و intent و confidence
+    :return: نص JSON يحتوي على response و intent و confidence و slots
     """
     global _router_instance
     if _router_instance is None:

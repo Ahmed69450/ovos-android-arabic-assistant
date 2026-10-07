@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-موجه المهارات المركزي (SkillRouter)
+موجه المهارات المركزي (SkillRouter) لسيارات BYD DiLink
 ينظم ويشغل دورة حياة المساعد الصوتي بالكامل:
 - إنشاء ناقل الرسائل (MessageBus)
-- تحميل محرك NLU العربي وأوزان النموذج
+- تحميل محرك NLU العربي الهجين (TF-IDF + Levenshtein)
+- تفعيل آلة حالات الحوار (DialogueFSM) ومستخرج الكيانات (ArabicNERExtractor)
 - تهيئة وتسجيل جميع المهارات العربية
-- توجيه العبارات واستقبال الردود الصوتية
+- تنقية الردود الصوتية بصرامة عبر TextSanitizer
 """
 
 import os
@@ -16,6 +17,9 @@ from .bus import AndroidMessageBus
 from .message import Message
 from .nlu_engine import ArabicNLUEngine
 from .intent_service import IntentService
+from .dialogue_fsm import DialogueFSM
+from .ner_extractor import ArabicNERExtractor
+from .text_sanitizer import TextSanitizer
 from .skills import (
     GreetingSkill,
     AssistantInfoSkill,
@@ -33,19 +37,31 @@ from .skills import (
     FallbackSkill,
 )
 
+
 class SkillRouter:
     """موجه ومنسق مهارات OpenVoiceOS لنظام أندرويد"""
 
     def __init__(self, model_weights_path: str, intents_data_path: Optional[str] = None):
         self.bus = AndroidMessageBus()
-        self.nlu_engine = ArabicNLUEngine(model_weights_path)
-        self.intent_service = IntentService(self.bus, self.nlu_engine, min_confidence=0.25)
+        self.fsm = DialogueFSM(session_timeout_seconds=60.0)
+        self.ner = ArabicNERExtractor()
+        self.nlu_engine = ArabicNLUEngine(
+            weights_source=model_weights_path,
+            intents_data_path=intents_data_path
+        )
+        self.intent_service = IntentService(
+            bus=self.bus,
+            nlu_engine=self.nlu_engine,
+            fsm=self.fsm,
+            ner=self.ner,
+            min_confidence=0.25
+        )
         self.skills: Dict[str, Any] = {}
         self.last_speech_output: str = ""
         self.last_matched_intent: str = ""
         self.last_confidence: float = 0.0
 
-        # الاستماع للردود الصوتية الصادرة من المهارات
+        # الاستماع للردود الصوتية الصادرة من المهارات ومطابقة النوايا
         self.bus.on("speak", self._on_speak_event)
         self.bus.on("ovos.intent.matched", self._on_intent_matched)
 
@@ -53,8 +69,10 @@ class SkillRouter:
         self._load_and_initialize_skills(intents_data_path)
 
     def _on_speak_event(self, message: Message) -> None:
-        """التقاط الرد الصوتي المتولد من المهارة النشطة"""
-        self.last_speech_output = message.data.get("utterance", "")
+        """التقاط وتنقية الرد الصوتي الصادر من المهارة النشطة"""
+        raw_text = message.data.get("utterance", "")
+        # ضمان خلو الرد التام من الماركداون والوسوم والأسطر
+        self.last_speech_output = TextSanitizer.clean_for_speech(raw_text)
 
     def _on_intent_matched(self, message: Message) -> None:
         """تسجيل النية المطابقة ودرجة ثقتها"""
@@ -67,11 +85,14 @@ class SkillRouter:
         qa_pairs = []
 
         if intents_data_path and os.path.exists(intents_data_path):
-            with open(intents_data_path, "r", encoding="utf-8") as f:
-                raw_data = json.load(f)
-                for item in raw_data.get("intents", []):
-                    intents_dict[item["tag"]] = item.get("responses", [])
-                qa_pairs = raw_data.get("qa_pairs", [])
+            try:
+                with open(intents_data_path, "r", encoding="utf-8") as f:
+                    raw_data = json.load(f)
+                    for item in raw_data.get("intents", []):
+                        intents_dict[item["tag"]] = item.get("responses", [])
+                    qa_pairs = raw_data.get("qa_pairs", [])
+            except Exception as e:
+                print(f"[SkillRouter] Error reading intents JSON: {e}")
 
         # تجميع أزواج السؤال والجواب حسب كل نية
         qa_by_intent = {}
@@ -109,7 +130,8 @@ class SkillRouter:
 
     def process_utterance(self, utterance: str) -> Dict[str, Any]:
         """
-        معالجة جملة المستخدم وتوجيهها للمهارة المناسبة وإرجاع الرد
+        معالجة جملة المستخدم وتوجيهها للمهارة المناسبة وإرجاع الرد المنقى
+        مع سياق الكيانات وحالة الذاكرة
         """
         self.last_speech_output = ""
         self.last_matched_intent = ""
@@ -119,9 +141,12 @@ class SkillRouter:
         msg = Message("recognizer_loop:utterance", data={"utterances": [utterance]})
         self.bus.emit(msg)
 
+        ctx = self.fsm.get_context()
         return {
             "response": self.last_speech_output,
             "intent": self.last_matched_intent,
             "confidence": self.last_confidence,
-            "utterance": utterance
+            "utterance": utterance,
+            "slots": ctx.slots,
+            "context_state": ctx.state.value
         }

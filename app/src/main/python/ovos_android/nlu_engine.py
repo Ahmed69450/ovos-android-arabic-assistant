@@ -168,31 +168,32 @@ class ArabicNLUEngine:
         best_intent = None
         best_score = 0.0
 
+        # مرتكزات دلالية سريعة ومميزة للتعرف الفوري والتعامل مع أخطاء نطق الميكروفون في السيارة
+        intent_anchors = {
+            "weather_skill": ["طقس", "الطقس", "جو", "الجو", "حراره", "الحراره", "مطر", "امطار", "رياح", "مناخ"],
+            "stop_skill": ["توقف", "اسكت", "اخرس", "الغاء", "صمت", "كفى", "قف", "صامت", "انهاء"],
+            "time_date_skill": ["ساعه", "الساعه", "وقت", "الوقت", "تاريخ"],
+            "greeting_skill": ["مرحبا", "سلام", "السلام", "صباح الخير", "مساء الخير", "اهلا", "تحياتي"],
+            "assistant_info_skill": ["من انت", "اسمك", "عن نفسك", "قدراتك", "وظيفتك"]
+        }
+
+        for intent, anchors in intent_anchors.items():
+            for anchor in anchors:
+                norm_a = self.normalize_arabic(anchor)
+                if f" {norm_a} " in f" {cleaned_text} ":
+                    return intent, 0.95
+                for w in words:
+                    if len(w) >= 3 and len(norm_a) >= 3 and abs(len(w) - len(norm_a)) <= 1:
+                        if levenshtein_similarity(w, norm_a) >= 0.75:
+                            return intent, 0.92
+
+        # 2. مطابقة كامل العبارة مع الأنماط المخزنة
         for intent, patterns in self.intent_patterns.items():
             for pat in patterns:
-                # 1. مطابقة كامل العبارة
                 sim = levenshtein_similarity(cleaned_text, pat)
                 if sim > best_score:
                     best_score = sim
                     best_intent = intent
-
-                # 2. مطابقة الكلمات المفتاحية للأوامر القصيرة
-                pat_words = pat.split()
-                if len(pat_words) == 1 and len(words) >= 1:
-                    for w in words:
-                        w_sim = levenshtein_similarity(w, pat)
-                        if w_sim > best_score and w_sim >= 0.75:
-                            best_score = w_sim
-                            best_intent = intent
-
-                # 3. احتواء جزئي تقريبي للتراكيب الثنائية
-                if len(pat_words) >= 2 and len(words) >= 2:
-                    for i in range(len(words) - len(pat_words) + 1):
-                        sub_phrase = ' '.join(words[i:i + len(pat_words)])
-                        sub_sim = levenshtein_similarity(sub_phrase, pat)
-                        if sub_sim > best_score:
-                            best_score = sub_sim
-                            best_intent = intent
 
         return best_intent, best_score
 
