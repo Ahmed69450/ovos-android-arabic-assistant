@@ -38,7 +38,18 @@ jobs:
     - name: Build APK with Gradle
       run: |
         echo "Building Android APK..."
-        gradle assembleDebug --stacktrace
+        gradle assembleDebug --stacktrace --no-daemon > gradle_build.log 2>&1 || {
+          echo "=== GRADLE BUILD FAILED: LOG OUTPUT ==="
+          tail -n 100 gradle_build.log
+          exit 1
+        }
+
+    - name: Upload Build Log on Failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gradle-build-log
+        path: gradle_build.log
 
     - name: Verify Generated APK
       id: find_apk
