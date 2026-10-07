@@ -4,6 +4,7 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
         maven { url "https://chaquo.com/maven" }
+        maven { url "https://alphacephei.com/maven/" }
     }
 }
 dependencyResolutionManagement {
@@ -12,6 +13,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url "https://chaquo.com/maven" }
+        maven { url "https://alphacephei.com/maven/" }
     }
 }
 rootProject.name = "OVOSArabicAssistant"
