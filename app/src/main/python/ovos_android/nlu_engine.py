@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-محرك الفهم اللغوي الطبيعي (NLU) للغة العربية الخفيف والداعم للاستدلال المحلي في أندرويد
-يستند إلى استخراج الخصائص TF-IDF ومصنف خفيف الوزن يعمل بأعلى سرعة دون اتصال بالإنترنت
+محرك الفهم اللغوي الطبيعي (NLU) للغة العربية الهجين لسيارات BYD DiLink
+يجمع بين خوارزمية مسافة ليفنشتاين (Levenshtein Distance) للمطابقة التقريبية وتصحيح الأخطاء،
+ومصفوفات TF-IDF المدربة محلياً للاستدلال السريع، مع دعم الذاكرة السياقية (FSM).
 """
 
 import os
@@ -10,10 +11,62 @@ import json
 import math
 from typing import Dict, Any, List, Optional, Tuple
 
-class ArabicNLUEngine:
-    """محرك NLU المحلي المستوحى من معمارية OVOS لمعالجة وفهم النصوص المنطوقة باللغة العربية"""
 
-    def __init__(self, weights_source: Optional[Any] = None):
+def levenshtein_similarity(s1: str, s2: str) -> float:
+    """حساب نسبة التشابه المعيارية بمسافة ليفنشتاين [0.0 - 1.0]"""
+    if not s1 or not s2:
+        return 0.0
+    if s1 == s2:
+        return 1.0
+
+    m, n = len(s1), len(s2)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev = dp[0]
+        dp[0] = i
+        s1_char = s1[i - 1]
+        for j in range(1, n + 1):
+            temp = dp[j]
+            cost = 0 if s1_char == s2[j - 1] else 1
+            dp[j] = min(dp[j] + 1, dp[j - 1] + 1, prev + cost)
+            prev = temp
+
+    max_len = max(m, n)
+    return 1.0 - (dp[n] / max_len)
+
+
+class ArabicNLUEngine:
+    """محرك NLU المحلي الهجين (TF-IDF + Levenshtein + Contextual FSM)"""
+
+    # الأنماط المحورية الأساسية للمطابقة التقريبية في بيئة السيارة
+    CORE_PATTERNS = {
+        "stop_skill": [
+            "توقف", "اسكت", "الغاء", "اخرس", "انهاء", "توقف عن الكلام",
+            "اغلق", "كفى", "صمت", "قف", "الغي", "بس خلاص"
+        ],
+        "greeting_skill": [
+            "مرحبا", "السلام عليكم", "صباح الخير", "مساء الخير", "اهلا وسهلا",
+            "كيف حالك", "شو اخبارك", "تحياتي", "اهلا", "هلا وغلا"
+        ],
+        "time_date_skill": [
+            "كم الساعة", "ما هو الوقت", "الوقت الان", "تاريخ اليوم",
+            "اي يوم نحن", "كم الوقت الان", "ما هو تاريخ اليوم"
+        ],
+        "assistant_info_skill": [
+            "من انت", "ما اسمك", "عرف عن نفسك", "ما هي قدراتك",
+            "ماذا تفعل", "من صنعك", "كيف تعمل"
+        ],
+        "weather_skill": [
+            "كيف الطقس", "حالة الجو", "هل ستمطر", "درجة الحرارة",
+            "الطقس اليوم", "كيف الجو غدا", "توقعات الطقس", "الجو بارد", "الجو حار"
+        ]
+    }
+
+    def __init__(
+        self,
+        weights_source: Optional[Any] = None,
+        intents_data_path: Optional[Any] = None
+    ):
         self.vocab: Dict[str, int] = {}
         self.idf: List[float] = []
         self.classes: List[str] = []
@@ -23,40 +76,61 @@ class ArabicNLUEngine:
         self.sublinear_tf: bool = True
         self.is_loaded: bool = False
 
-        # معالجات فورية سريعة للأوامر الحيوية ذات الأولوية القصوى (مثل OVOS Padatious/Stop Service)
-        self._fast_rules = {
-            "stop_skill": ["توقف", "اسكت", "الغاء", "اخرس", "انهاء", "توقف عن الكلام", "اغلق", "كفى", "صمت", "قف"],
-            "greeting_skill": ["مرحبا", "السلام عليكم", "صباح الخير", "مساء الخير", "اهلا وسهلا", "كيف حالك", "شو اخبارك"],
-            "time_date_skill": ["كم الساعه", "ما هو الوقت", "الوقت الان", "تاريخ اليوم", "اي يوم نحن"],
-            "assistant_info_skill": ["من انت", "ما اسمك", "عرف عن نفسك", "ما هي قدراتك", "ماذا تفعل"]
+        # قواميس الأنماط للمطابقة التقريبية
+        self.intent_patterns: Dict[str, List[str]] = {
+            k: [self.normalize_arabic(p) for p in v] for k, v in self.CORE_PATTERNS.items()
         }
+
+        if intents_data_path:
+            self.load_patterns(intents_data_path)
 
         if weights_source:
             self.load_model(weights_source)
 
     @staticmethod
-    def normalize_arabic(text: str) -> str:
-        """معالجة وتوحيد الأحرف العربية وإزالة التشكيل والكشيدة لضمان دقة المطابقة"""
-        if not isinstance(text, str):
+    def normalize_arabic(text: Optional[str]) -> str:
+        """معالجة وتوحيد الأحرف العربية وإزالة التشكيل والكشيدة"""
+        if not text or not isinstance(text, str):
             return ""
-        # إزالة التشكيل والحركات
-        text = re.sub(r'[\u064B-\u065F\u0670]', '', text)
-        # إزالة التطويل
-        text = re.sub(r'\u0640', '', text)
+        # إزالة التشكيل والحركات والكشيدة
+        text = re.sub(r'[\u064B-\u065F\u0670\u0640]', '', text)
         # توحيد الألف
         text = re.sub(r'[إأآا]', 'ا', text)
         # توحيد الياء
         text = re.sub(r'[يى]', 'ي', text)
         # توحيد التاء المربوطة
         text = re.sub(r'ة', 'ه', text)
-        # إزالة علامات الترقيم والأرقام غير المرغوبة
+        # إزالة علامات الترقيم
         text = re.sub(r'[^\w\s]', ' ', text)
         # توحيد المسافات
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
+        return ' '.join(text.split())
+
+    def load_patterns(self, source: Any) -> None:
+        """تحميل أنماط النوايا من ملف intents.json لدعم المطابقة التقريبية الشاملة"""
+        try:
+            if isinstance(source, str) and os.path.exists(source):
+                with open(source, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            elif isinstance(source, dict):
+                data = source
+            else:
+                return
+
+            for intent in data.get("intents", []):
+                tag = intent.get("tag")
+                patterns = intent.get("patterns", [])
+                if tag and patterns:
+                    if tag not in self.intent_patterns:
+                        self.intent_patterns[tag] = []
+                    for pat in patterns[:50]:  # أفضل 50 نمط لكل نية لسرعة المعالجة
+                        norm_p = self.normalize_arabic(pat)
+                        if norm_p and norm_p not in self.intent_patterns[tag]:
+                            self.intent_patterns[tag].append(norm_p)
+        except Exception as e:
+            print(f"[NLU Warning] Failed to load intent patterns: {e}")
 
     def load_model(self, source: Any) -> None:
-        """تحميل أوزان النموذج من ملف JSON أو مسار أو كائن قاموس"""
+        """تحميل أوزان نموذج TF-IDF من ملف JSON أو قاموس"""
         if isinstance(source, str):
             if os.path.exists(source):
                 with open(source, "r", encoding="utf-8") as f:
@@ -78,7 +152,7 @@ class ArabicNLUEngine:
         self.is_loaded = True
 
     def _tokenize(self, text: str) -> List[str]:
-        """تفكيك الجملة إلى كلمات وتراكيب ثنائية (Unigrams & Bigrams)"""
+        """تفكيك الجملة إلى Unigrams و Bigrams"""
         words = text.split()
         tokens = list(words)
         if self.ngram_range[1] >= 2 and len(words) > 1:
@@ -86,18 +160,46 @@ class ArabicNLUEngine:
                 tokens.append(f"{words[i]} {words[i+1]}")
         return tokens
 
-    def _check_fast_rules(self, normalized_text: str) -> Optional[Tuple[str, float]]:
-        """التحقق من القواعد المباشرة ذات الأولوية العالية المشابهة لـ OVOS Matcher"""
-        for intent_tag, patterns in self._fast_rules.items():
-            for pat in patterns:
-                norm_pat = self.normalize_arabic(pat)
-                if norm_pat in normalized_text or normalized_text in norm_pat:
-                    return intent_tag, 0.99
-        return None
-
-    def parse_intent(self, utterance: str) -> Dict[str, Any]:
+    def _fuzzy_match(self, cleaned_text: str) -> Tuple[Optional[str], float]:
         """
-        تحليل العبارة المنطوقة واستخراج النية الأكثر احتمالاً مع درجة الثقة
+        مطابقة تقريبية بمسافة ليفنشتاين تتسامح مع الأخطاء الإملائية والتشويش الصوتي
+        """
+        words = cleaned_text.split()
+        best_intent = None
+        best_score = 0.0
+
+        for intent, patterns in self.intent_patterns.items():
+            for pat in patterns:
+                # 1. مطابقة كامل العبارة
+                sim = levenshtein_similarity(cleaned_text, pat)
+                if sim > best_score:
+                    best_score = sim
+                    best_intent = intent
+
+                # 2. مطابقة الكلمات المفتاحية للأوامر القصيرة
+                pat_words = pat.split()
+                if len(pat_words) == 1 and len(words) >= 1:
+                    for w in words:
+                        w_sim = levenshtein_similarity(w, pat)
+                        if w_sim > best_score and w_sim >= 0.75:
+                            best_score = w_sim
+                            best_intent = intent
+
+                # 3. احتواء جزئي تقريبي للتراكيب الثنائية
+                if len(pat_words) >= 2 and len(words) >= 2:
+                    for i in range(len(words) - len(pat_words) + 1):
+                        sub_phrase = ' '.join(words[i:i + len(pat_words)])
+                        sub_sim = levenshtein_similarity(sub_phrase, pat)
+                        if sub_sim > best_score:
+                            best_score = sub_sim
+                            best_intent = intent
+
+        return best_intent, best_score
+
+    def parse_intent(self, utterance: str, context: Optional[Any] = None) -> Dict[str, Any]:
+        """
+        تحليل العبارة المنطوقة واستخراج النية الأكثر احتمالاً مع درجة الثقة،
+        مع مراعاة سياق الحوار السابق (FSM Context)
         """
         cleaned = self.normalize_arabic(utterance)
         if not cleaned:
@@ -108,19 +210,46 @@ class ArabicNLUEngine:
                 "cleaned": ""
             }
 
-        # 1. التدقيق السريع للقواعد ذات الأولوية القصوى
-        fast_match = self._check_fast_rules(cleaned)
-        if fast_match:
-            intent, conf = fast_match
+        # 1. فحص السياق السابق (Follow-up Turn Resolution)
+        if context and hasattr(context, "last_intent") and context.last_intent:
+            words = cleaned.split()
+            # إذا كانت الجملة قصيرة جداً (أقل من 3 كلمات) وتتبع سؤالاً سابقاً مثل ("وغداً؟"، "وفي دبي؟")
+            is_followup = (
+                len(words) <= 3 and (
+                    cleaned.startswith("و") or
+                    any(w in cleaned for w in ("غدا", "غدا", "بعده", "امس", "في", "ب"))
+                )
+            )
+            if is_followup:
+                return {
+                    "intent": context.last_intent,
+                    "confidence": 0.95,
+                    "utterance": utterance,
+                    "cleaned": cleaned,
+                    "match_type": "contextual_followup"
+                }
+
+        # 2. المطابقة التقريبية عبر ليفنشتاين
+        fuzzy_intent, fuzzy_score = self._fuzzy_match(cleaned)
+        if fuzzy_score >= 0.80 and fuzzy_intent:
             return {
-                "intent": intent,
-                "confidence": conf,
+                "intent": fuzzy_intent,
+                "confidence": round(fuzzy_score, 4),
                 "utterance": utterance,
                 "cleaned": cleaned,
-                "match_type": "fast_rule"
+                "match_type": "fuzzy_levenshtein"
             }
 
+        # 3. مصنف TF-IDF
         if not self.is_loaded:
+            if fuzzy_intent and fuzzy_score >= 0.60:
+                return {
+                    "intent": fuzzy_intent,
+                    "confidence": round(fuzzy_score, 4),
+                    "utterance": utterance,
+                    "cleaned": cleaned,
+                    "match_type": "fuzzy_levenshtein"
+                }
             return {
                 "intent": "general_knowledge_skill",
                 "confidence": 0.5,
@@ -129,7 +258,6 @@ class ArabicNLUEngine:
                 "match_type": "default_unloaded"
             }
 
-        # 2. حساب مصفوفة TF-IDF للنص المدخل
         tokens = self._tokenize(cleaned)
         counts: Dict[str, int] = {}
         for t in tokens:
@@ -137,38 +265,41 @@ class ArabicNLUEngine:
                 counts[t] = counts.get(t, 0) + 1
 
         if not counts:
+            if fuzzy_intent and fuzzy_score >= 0.55:
+                return {
+                    "intent": fuzzy_intent,
+                    "confidence": round(fuzzy_score, 4),
+                    "utterance": utterance,
+                    "cleaned": cleaned,
+                    "match_type": "fuzzy_levenshtein"
+                }
             return {
-                "intent": "general_knowledge_skill",
+                "intent": "fallback_skill",
                 "confidence": 0.2,
                 "utterance": utterance,
                 "cleaned": cleaned,
                 "match_type": "out_of_vocab"
             }
 
-        # تكوين المتجه
         vec = [0.0] * len(self.vocab)
         for term, cnt in counts.items():
             idx = self.vocab[term]
             tf = (1.0 + math.log(cnt)) if self.sublinear_tf else float(cnt)
             vec[idx] = tf * self.idf[idx]
 
-        # تسوية المتجه L2 Norm
         norm = math.sqrt(sum(v * v for v in vec))
         if norm > 0:
             vec = [v / norm for v in vec]
 
-        # 3. حساب درجات المصنف (Logits)
         logits = []
         for c_idx in range(len(self.classes)):
             score = self.bias[c_idx]
             c_weights = self.weights[c_idx]
-            # ضرب نقطي سريع للعناصر الموجودة فقط
             for term in counts:
                 idx = self.vocab[term]
                 score += c_weights[idx] * vec[idx]
             logits.append(score)
 
-        # 4. حساب دالة الاحتمال Softmax
         max_logit = max(logits)
         exp_scores = [math.exp(l - max_logit) for l in logits]
         total_exp = sum(exp_scores)
@@ -178,10 +309,17 @@ class ArabicNLUEngine:
         best_intent = self.classes[best_idx]
         best_conf = probabilities[best_idx]
 
+        # تعزيز النتيجة بنسبة المطابقة التقريبية إذا توافقتا
+        if fuzzy_intent and fuzzy_intent == best_intent:
+            best_conf = min(0.99, max(best_conf, fuzzy_score * 0.95))
+        elif fuzzy_intent and fuzzy_score >= 0.75 and best_conf < 0.60:
+            best_intent = fuzzy_intent
+            best_conf = fuzzy_score
+
         return {
             "intent": best_intent,
             "confidence": round(best_conf, 4),
             "utterance": utterance,
             "cleaned": cleaned,
-            "match_type": "tfidf_classifier"
+            "match_type": "hybrid_tfidf_fuzzy"
         }
