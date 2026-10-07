@@ -1,0 +1,33 @@
+# Android build artifacts
+build/
+.gradle/
+app/build/
+local.properties
+.cxx/
+captures/
+*.apk
+*.ap_
+*.dex
+*.class
+
+# Python cache and temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+env/
+*.parquet
+
+# Cloned large reference repositories
+ovos-core/
+
+# Security and local configs
+.security/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

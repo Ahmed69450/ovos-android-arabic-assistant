@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">المساعد الصوتي العربي (OVOS)</string>
+    <string name="welcome_message">مرحباً بك! أنا مساعدك الصوتي المحلي المبني على معمارية OpenVoiceOS. اضغط على الميكروفون للتحدث أو اكتب سؤالك أدناه.</string>
+    <string name="hint_input">اكتب سؤالك أو أمرك الصوتي هنا...</string>
+    <string name="btn_send">إرسال</string>
+    <string name="listening_state">جاري الاستماع...</string>
+    <string name="processing_state">جاري المعالجة محلياً عبر OVOS...</string>
+    <string name="ready_state">المساعد جاهز وفي وضع الاستعداد</string>
+</resources>
