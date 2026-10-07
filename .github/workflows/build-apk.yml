@@ -98,12 +98,14 @@ jobs:
         tag_name: ${{ steps.release_info.outputs.tag }}
         name: "OVOS Arabic Assistant ${{ steps.release_info.outputs.tag }}"
         body: |
-          ### المساعد الصوتي العربي المحلي (OVOS Android Assistant)
-          حزمة التطبيق الرسمية (APK) مبنية على معمارية OpenVoiceOS وتعمل محلياً بالكامل دون اتصال بالإنترنت (Offline).
+          ### المساعد الصوتي العربي (OVOS Voice Assistant v2.0.0 - BYD DiLink Edition)
+          تحديث معماري شامل لنظام المساعد الصوتي المخصص لسيارات BYD DiLink:
           
-          - **المحرك:** OpenVoiceOS (Adapted Core)
-          - **التكامل:** Chaquopy CPython Runtime
-          - **النموذج:** TF-IDF Arabic NLU Local Classifier
+          - **المعمارية الصوتية:** الاستماع المستمر في الخلفية عبر Vosk STT (16kHz Offline) ومحرك النطق الطبيعي Piper TTS مع Audio Ducking.
+          - **محرك الفهم اللغوي (NLU):** دمج خوارزمية Levenshtein Distance للمطابقة التقريبية مع مصفوفات TF-IDF لتجاوز الأخطاء الإملائية.
+          - **استخراج الكيانات (NER):** محرك محلي سريع لاستخراج المدن والتواريخ والأرقام.
+          - **ذاكرة السياق (FSM):** آلة حالات منتهية لدعم الحوار التتابعي متعدد الجولات.
+          - **الخدمات الحية والتنقية:** طقس فوري عبر Open-Meteo، بحث ذكي عبر DuckDuckGo، وأداة TextSanitizer لتنقية النصوص الصارمة.
         files: |
           app-debug.apk
           app-debug.apk.sha256
