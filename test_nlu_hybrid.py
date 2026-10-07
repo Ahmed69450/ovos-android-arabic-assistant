@@ -39,5 +39,12 @@ class TestHybridNLUEngine(unittest.TestCase):
         result = self.engine.parse_intent("وغداً؟", context=ctx)
         self.assertEqual(result["intent"], "weather_skill")
 
+    def test_unbounded_utterance_dos_prevention(self):
+        # Defensive regression test: verify 10k character string is safely bounded
+        huge_input = "طقس " + ("أ" * 10000)
+        result = self.engine.parse_intent(huge_input)
+        self.assertIsNotNone(result)
+        self.assertIn("intent", result)
+
 if __name__ == "__main__":
     unittest.main()

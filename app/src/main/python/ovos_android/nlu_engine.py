@@ -19,6 +19,12 @@ def levenshtein_similarity(s1: str, s2: str) -> float:
     if s1 == s2:
         return 1.0
 
+    # الحد الدفاعي لطول النص لمنع استنزاف المعالج (CWE-400 CPU Exhaustion DoS)
+    if len(s1) > 256:
+        s1 = s1[:256]
+    if len(s2) > 256:
+        s2 = s2[:256]
+
     m, n = len(s1), len(s2)
     dp = list(range(n + 1))
     for i in range(1, m + 1):
@@ -202,6 +208,8 @@ class ArabicNLUEngine:
         تحليل العبارة المنطوقة واستخراج النية الأكثر احتمالاً مع درجة الثقة،
         مع مراعاة سياق الحوار السابق (FSM Context)
         """
+        if utterance and len(utterance) > 256:
+            utterance = utterance[:256]
         cleaned = self.normalize_arabic(utterance)
         if not cleaned:
             return {
