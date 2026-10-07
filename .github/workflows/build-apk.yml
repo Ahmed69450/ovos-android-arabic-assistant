@@ -51,6 +51,16 @@ jobs:
         name: gradle-build-log
         path: gradle_build.log
 
+    - name: Report Error Log as Issue
+      if: failure()
+      run: |
+        gh issue create --title "Build Log Summary" --body "### Gradle Build Log:
+        \`\`\`
+        $(tail -n 60 gradle_build.log)
+        \`\`\`" --repo Ahmed69450/ovos-android-arabic-assistant
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Verify Generated APK
       id: find_apk
       run: |
