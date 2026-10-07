@@ -26,6 +26,7 @@ ovos-core/
 
 # Security and local configs
 .security/
+.superpowers/
 .idea/
 *.iml
 .vscode/
