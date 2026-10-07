@@ -11,6 +11,7 @@
 
 import os
 import json
+import threading
 from typing import Dict, Any, Optional
 
 from .bus import AndroidMessageBus
@@ -60,6 +61,7 @@ class SkillRouter:
         self.last_speech_output: str = ""
         self.last_matched_intent: str = ""
         self.last_confidence: float = 0.0
+        self._lock = threading.RLock()
 
         # الاستماع للردود الصوتية الصادرة من المهارات ومطابقة النوايا
         self.bus.on("speak", self._on_speak_event)
@@ -133,20 +135,24 @@ class SkillRouter:
         معالجة جملة المستخدم وتوجيهها للمهارة المناسبة وإرجاع الرد المنقى
         مع سياق الكيانات وحالة الذاكرة
         """
-        self.last_speech_output = ""
-        self.last_matched_intent = ""
-        self.last_confidence = 0.0
+        if utterance and len(utterance) > 256:
+            utterance = utterance[:256]
 
-        # بث الحدث القياسي في OVOS
-        msg = Message("recognizer_loop:utterance", data={"utterances": [utterance]})
-        self.bus.emit(msg)
+        with self._lock:
+            self.last_speech_output = ""
+            self.last_matched_intent = ""
+            self.last_confidence = 0.0
 
-        ctx = self.fsm.get_context()
-        return {
-            "response": self.last_speech_output,
-            "intent": self.last_matched_intent,
-            "confidence": self.last_confidence,
-            "utterance": utterance,
-            "slots": ctx.slots,
-            "context_state": ctx.state.value
-        }
+            # بث الحدث القياسي في OVOS
+            msg = Message("recognizer_loop:utterance", data={"utterances": [utterance]})
+            self.bus.emit(msg)
+
+            ctx = self.fsm.get_context()
+            return {
+                "response": self.last_speech_output,
+                "intent": self.last_matched_intent,
+                "confidence": self.last_confidence,
+                "utterance": utterance,
+                "slots": ctx.slots,
+                "context_state": ctx.state.value
+            }
