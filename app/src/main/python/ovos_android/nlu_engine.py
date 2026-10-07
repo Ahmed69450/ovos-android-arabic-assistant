@@ -214,14 +214,17 @@ class ArabicNLUEngine:
         # 1. فحص السياق السابق (Follow-up Turn Resolution)
         if context and hasattr(context, "last_intent") and context.last_intent:
             words = cleaned.split()
-            # إذا كانت الجملة قصيرة جداً (أقل من 3 كلمات) وتتبع سؤالاً سابقاً مثل ("وغداً؟"، "وفي دبي؟")
+            # إذا كانت الجملة تبدأ بحرف عطف استكمالي أو ظرف زمني استكمالي قصير مثل ("وغداً؟"، "وفي دبي؟"، "ماذا عن القاهرة؟")
             is_followup = (
                 len(words) <= 3 and (
                     cleaned.startswith("و") or
-                    any(w in cleaned for w in ("غدا", "غدا", "بعده", "امس", "في", "ب"))
+                    any(w in ("غدا", "بعده", "امس") for w in words) or
+                    "ماذا عن" in cleaned
                 )
             )
-            if is_followup:
+            # التأكد من أنها ليست جملة استفهامية جديدة أو أمراً مستقلاً (مثل: كيف، ما، هل، احسب، توقف، مرحبا، صف)
+            independent_commands = {"احسب", "توقف", "اسكت", "مرحبا", "صف", "عرف", "اشرح", "الف", "كم", "من", "كيف", "ما", "هل"}
+            if is_followup and not any(w in independent_commands for w in words):
                 return {
                     "intent": context.last_intent,
                     "confidence": 0.95,
