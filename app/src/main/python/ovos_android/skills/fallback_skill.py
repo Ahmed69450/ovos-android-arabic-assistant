@@ -21,17 +21,30 @@ from ..message import Message
 from ..text_sanitizer import TextSanitizer
 
 
+def is_explicit_knowledge_query(query: str) -> bool:
+    """التحقق مما إذا كانت العبارة سؤالاً معرفياً صريحاً وليست دردشة أو كلاماً عاماً"""
+    q = query.strip()
+    explicit_prefixes = (
+        "من هو", "من هي", "ما هو", "ما هي", "ماهو", "ماهي",
+        "عرف لي", "عرف ", "اشرح لي", "اشرح ", "حدثني عن", "نبذة عن",
+        "معلومات عن", "اين يقع", "اين تقع", "وين صاير", "وين صايرة",
+        "من اخترع", "من صنع", "من اكتشف", "من بنى", "متى حدث", "ما معنى",
+        "شنو معنى", "شنو هو", "شنو هي", "ما سبب", "كيف يحدث", "كيف تكونت"
+    )
+    return any(q.startswith(p) for p in explicit_prefixes)
+
+
 class FallbackSkill(OVOSSkill):
-    """مهارة التراجع الذكية والمعارف الموسعة"""
+    """مهارة التراجع الصارمة والآمنة من الهلوسة (Strict Fallback)"""
 
     def __init__(self, bus, qa_pairs: Optional[List[Dict[str, str]]] = None):
         super().__init__("fallback_skill", bus)
         self.qa_pairs = qa_pairs or []
         self.wolfram_app_id = os.environ.get("WOLFRAM_APP_ID", "")
         self.polite_fallbacks = [
-            "عذراً، لم أستطع العثور على إجابة دقيقة لسؤالك. هل يمكنك إعادة صياغته بكلمات أخرى؟",
-            "لم تتضح لي الإجابة الكاملة، يرجى سؤالي بطريقة أوضح وسأبذل جهدي لمساعدتك.",
-            "أنا أتعلم باستمرار، لم أتعرف على هذا الطلب بدقة، هل تود السؤال عن شيء آخر؟"
+            "عذراً، ما فهمت قصدك، تكدر تعيد؟",
+            "ما وضحت لي الفكرة، يا ريت تعيد صياغة السؤال.",
+            "عذراً، ما عرفت شنو قصدك بالضبط، تكدر توضح أكثر؟"
         ]
 
     def _query_duckduckgo(self, query: str) -> Optional[str]:
@@ -118,22 +131,22 @@ class FallbackSkill(OVOSSkill):
             self.speak(TextSanitizer.clean_for_speech(best_match["response"]))
             return
 
-        # 2. الاستعلام عبر ويكيبيديا العربية
-        wiki_result = self._query_wikipedia(utterance)
-        if wiki_result:
-            self.speak(TextSanitizer.clean_for_speech(wiki_result))
-            return
+        # 2. الاستعلام عبر ويكيبيديا أو محركات البحث فقط إذا كان السؤال استفساراً معرفياً صريحاً
+        if is_explicit_knowledge_query(utterance):
+            wiki_result = self._query_wikipedia(utterance)
+            if wiki_result:
+                self.speak(TextSanitizer.clean_for_speech(wiki_result))
+                return
 
-        # 3. الاستعلام عبر Wolfram Alpha إن كان مفعلًا
-        wolfram_result = self._query_wolfram_alpha(utterance)
-        if wolfram_result:
-            self.speak(TextSanitizer.clean_for_speech(wolfram_result))
-            return
+            wolfram_result = self._query_wolfram_alpha(utterance)
+            if wolfram_result:
+                self.speak(TextSanitizer.clean_for_speech(wolfram_result))
+                return
 
-        # 4. الاستعلام عبر DuckDuckGo
-        ddg_result = self._query_duckduckgo(utterance)
-        if ddg_result:
-            self.speak(TextSanitizer.clean_for_speech(ddg_result))
-            return
+            ddg_result = self._query_duckduckgo(utterance)
+            if ddg_result:
+                self.speak(TextSanitizer.clean_for_speech(ddg_result))
+                return
 
+        # 3. التراجع الصارم (Strict Fallback) الخالي تماماً من الهلوسة
         self.speak(TextSanitizer.clean_for_speech(random.choice(self.polite_fallbacks)))

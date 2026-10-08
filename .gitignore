@@ -38,3 +38,7 @@ Thumbs.db
 *.p12
 *.pem
 *.key
+
+# Large machine learning binary models (>100MB limit on GitHub)
+app/src/main/assets/*.onnx
+*.onnx

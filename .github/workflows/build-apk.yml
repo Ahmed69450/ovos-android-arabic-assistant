@@ -35,6 +35,11 @@ jobs:
       with:
         gradle-version: '8.2'
 
+    - name: Download ONNX Semantic Model Asset
+      run: |
+        echo "Ensuring ONNX semantic model assets are present..."
+        python download_and_setup_semantic_model.py
+
     - name: Build APK with Gradle
       run: |
         echo "Building Android APK..."
@@ -82,7 +87,7 @@ jobs:
         if [[ "$GITHUB_REF_VAL" == refs/tags/* ]]; then
           echo "tag=$GITHUB_REF_NAME_VAL" >> "$GITHUB_OUTPUT"
         else
-          echo "tag=v2.2.0" >> "$GITHUB_OUTPUT"
+          echo "tag=v2.3.0" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Publish GitHub Release
@@ -91,14 +96,13 @@ jobs:
         tag_name: ${{ steps.release_info.outputs.tag }}
         name: "OVOS Arabic Assistant ${{ steps.release_info.outputs.tag }}"
         body: |
-          ### المساعد الصوتي العربي (OVOS Voice Assistant v2.2.0 - Super Intelligence Edition)
-          ترقية ذكاء خارقة وإصلاح شامل لمنطق الاستدلال واسترجاع المعارف:
+          ### المساعد الصوتي العربي (OVOS Voice Assistant v2.3.0 - ONNX Semantic Router Edition)
+          تحول معماري ذكي نحو نماذج التضمين الدلالي وموجه المعاني:
           
-          - **قاعدة معارف جغرافية وعواصم فورية:** إجابة دقيقة 100% لعواصم الدول العربية والعالمية (مثل بغداد للعراق، الرياض، القاهرة، باريس...).
-          - **ربط حي بموسوعة ويكيبيديا والأخبار العاجلة:** استعلام لحظي عن أي شخصية أو موضوع تاريخي وعلمي مع نشرة العناوين الإخبارية الحية.
-          - **معالجة العمليات الحسابية المباشرة:** حساب دقيق فوري للعمليات اللفظية مثل (احسب 25 في 4 = 100).
-          - **إصلاح أخطاء النوايا العشوائية:** إزالة التشابه الزائف للكلمات القصيرة (فصل "كيف تعمل" عن التحيات، وفصل "آخر الأخبار" عن أوامر الإيقاف).
-          - **صفر استهلاك للمعالج (Zero-Lag):** استدلال محلي خفيف جداً بسرعة أقل من 4 ملي ثانية.
+          - **موجه المعاني الدلالي (ONNX Semantic Router):** استبدال TF-IDF بنموذج Dense Multilingual Embedding (384 أبعاد) لفهم المعنى البشري واللهجات بدقة (مثل فهم "اني زين" و"الحمد لله").
+          - **منطق التراجع الصارم (Strict Fallback - Zero Hallucinations):** حظر البحث العشوائي في ويكيبيديا؛ إذا قلت ثقة المطابقة عن 65% يتراجع المساعد فوراً وبأمان.
+          - **ذاكرة سياق الحوار (Conversational Chitchat Memory):** استكمال تبادل التحايا والاطمئنان على الحال بمرونة ذكية ودون وسائط خارجية.
+          - **الاستدلال السريع وخفة المعالج:** حساب التشابه الزاوي (Cosine Similarity) في أقل من 15 ملي ثانية عبر معالجات أندرويد.
         files: |
           app-debug.apk
           app-debug.apk.sha256

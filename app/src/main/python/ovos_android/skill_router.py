@@ -55,7 +55,7 @@ class SkillRouter:
             nlu_engine=self.nlu_engine,
             fsm=self.fsm,
             ner=self.ner,
-            min_confidence=0.25
+            min_confidence=0.65
         )
         self.skills: Dict[str, Any] = {}
         self.last_speech_output: str = ""
@@ -130,10 +130,15 @@ class SkillRouter:
         self.skills[skill.skill_id] = skill
         self.intent_service.register_skill(skill)
 
-    def process_utterance(self, utterance: str) -> Dict[str, Any]:
+    def process_utterance(
+        self,
+        utterance: str,
+        external_intent: Optional[str] = None,
+        external_confidence: Optional[float] = None
+    ) -> Dict[str, Any]:
         """
         معالجة جملة المستخدم وتوجيهها للمهارة المناسبة وإرجاع الرد المنقى
-        مع سياق الكيانات وحالة الذاكرة
+        مع سياق الكيانات وحالة الذاكرة ودعم التوجيه الدلالي المسبق
         """
         if utterance and len(utterance) > 256:
             utterance = utterance[:256]
@@ -143,8 +148,13 @@ class SkillRouter:
             self.last_matched_intent = ""
             self.last_confidence = 0.0
 
-            # بث الحدث القياسي في OVOS
-            msg = Message("recognizer_loop:utterance", data={"utterances": [utterance]})
+            # بث الحدث القياسي في OVOS مع حقن النية الدلالية الخارجية إن وجدت
+            msg_data: Dict[str, Any] = {"utterances": [utterance]}
+            if external_intent:
+                msg_data["external_intent"] = external_intent
+                msg_data["external_confidence"] = external_confidence or 0.0
+
+            msg = Message("recognizer_loop:utterance", data=msg_data)
             self.bus.emit(msg)
 
             ctx = self.fsm.get_context()

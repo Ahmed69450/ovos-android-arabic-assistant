@@ -47,10 +47,17 @@ def initialize(model_weights_path: str, intents_data_path: Optional[str] = None)
         _safe_log(f"فشل في تهيئة محرك OVOS: {str(e)}")
         return False
 
-def process_utterance(utterance_text: str) -> str:
+def process_utterance(
+    utterance_text: str,
+    semantic_intent: Optional[str] = None,
+    semantic_confidence: Optional[float] = None
+) -> str:
     """
     معالجة النص المنطوق من المستخدم وإرجاع النتيجة بتنسيق JSON لكود Kotlin
+    مع دعم التوجيه الدلالي القادم من ONNX Semantic Router
     :param utterance_text: جملة المستخدم باللغة العربية
+    :param semantic_intent: النية الدلالية المحددة من نموذج ONNX
+    :param semantic_confidence: درجة الثقة الدلالية من موجه المعاني
     :return: نص JSON يحتوي على response و intent و confidence و slots
     """
     global _router_instance
@@ -63,7 +70,11 @@ def process_utterance(utterance_text: str) -> str:
         }, ensure_ascii=False)
 
     try:
-        result = _router_instance.process_utterance(utterance_text)
+        result = _router_instance.process_utterance(
+            utterance_text,
+            external_intent=semantic_intent,
+            external_confidence=semantic_confidence
+        )
         return json.dumps(result, ensure_ascii=False)
     except Exception as e:
         _safe_log(f"Error during process_utterance: {str(e)}")

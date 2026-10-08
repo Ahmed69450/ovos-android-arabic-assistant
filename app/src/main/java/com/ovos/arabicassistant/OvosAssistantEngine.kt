@@ -25,6 +25,7 @@ data class OvosResult(
 class OvosAssistantEngine private constructor(private val context: Context) {
 
     private var bridgeModule: PyObject? = null
+    private var semanticRouter: SemanticRouter? = null
     private var isInitialized = false
 
     companion object {
@@ -55,6 +56,10 @@ class OvosAssistantEngine private constructor(private val context: Context) {
 
             // استدعاء دالة التهيئة في بايثون
             val success = bridgeModule?.callAttr("initialize", modelFile.absolutePath, intentsFile.absolutePath)?.toBoolean() ?: false
+            
+            // تهيئة موجه المعاني الدلالي (ONNX Semantic Router)
+            semanticRouter = SemanticRouter(context)
+
             isInitialized = success
             success
         } catch (e: Exception) {
@@ -72,7 +77,13 @@ class OvosAssistantEngine private constructor(private val context: Context) {
         }
 
         try {
-            val resultJsonStr = bridgeModule?.callAttr("process_utterance", utterance)?.toString() ?: ""
+            // فحص التوجيه الدلالي الذكي أولاً
+            val routeResult = semanticRouter?.route(utterance)
+            val resultJsonStr = if (routeResult != null && routeResult.intent != "unknown") {
+                bridgeModule?.callAttr("process_utterance", utterance, routeResult.intent, routeResult.confidence.toDouble())?.toString() ?: ""
+            } else {
+                bridgeModule?.callAttr("process_utterance", utterance)?.toString() ?: ""
+            }
             val json = JSONObject(resultJsonStr)
 
             OvosResult(

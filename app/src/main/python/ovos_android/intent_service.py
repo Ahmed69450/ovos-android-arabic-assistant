@@ -5,6 +5,7 @@
 وتوجه الطلب مع الكيانات والسياق للمهارة الفائزة
 """
 
+import re
 from typing import Dict, Any, Optional
 from .message import Message
 from .bus import AndroidMessageBus
@@ -23,7 +24,7 @@ class IntentService:
         nlu_engine: ArabicNLUEngine,
         fsm: Optional[DialogueFSM] = None,
         ner: Optional[ArabicNERExtractor] = None,
-        min_confidence: float = 0.30
+        min_confidence: float = 0.65
     ):
         self.bus = bus
         self.nlu_engine = nlu_engine
@@ -54,12 +55,52 @@ class IntentService:
         # 2. الحصول على سياق الجلسة السابقة
         current_context = self.fsm.get_context() if self.fsm else None
 
-        # 3. مطابقة النية عبر محرك NLU الهجين مع الاستفادة من سياق الحوار
-        match_result = self.nlu_engine.parse_intent(utterance, context=current_context)
-        matched_intent = match_result.get("intent", "")
-        confidence = match_result.get("confidence", 0.0)
+        # 3. فحص سياق الحوار التتابعي لردود الدردشة (Chitchat State Followup)
+        # إذا كانت الجولة السابقة تحية أو سؤال عن الحال، والرد هو حالة المستخدم (مثل "اني زين", "الحمد لله", "بخير")
+        clean_utt = re.sub(r'[^\w\s]', ' ', utterance).strip()
+        utt_words = clean_utt.split()
+        chitchat_phrases = [
+            "اني زين", "انا زين", "الحمد لله", "الحمدلله", "زين الحمد لله",
+            "زين الحمدلله", "بخير الحمد لله", "تمام الحمد لله", "الحمد لله بخير",
+            "بخير وانت", "تمام وانت", "وانت كيفك", "وانت شخبارك", "كلو تمام",
+            "كله تمام", "بصحة جيدة", "على ما يرام", "ماشي الحال"
+        ]
+        chitchat_single_words = {"زين", "بخير", "تمام", "عايشين", "كويس"}
+        has_chitchat_phrase = any(phrase in clean_utt for phrase in chitchat_phrases)
+        has_chitchat_word = len(utt_words) <= 3 and any(w in chitchat_single_words for w in utt_words)
+        is_chitchat = has_chitchat_phrase or has_chitchat_word
 
-        # 4. التحقق من عتبة الثقة المعتمدة
+        ext_intent = message.data.get("external_intent")
+        ext_conf = float(message.data.get("external_confidence", 0.0))
+
+        if ext_intent and ext_intent != "unknown":
+            matched_intent = ext_intent
+            confidence = ext_conf
+        elif current_context and current_context.last_intent == "greeting_skill" and is_chitchat:
+            matched_intent = "greeting_skill"
+            confidence = 0.99
+            match_result = {
+                "intent": "greeting_skill",
+                "confidence": 0.99,
+                "utterance": utterance,
+                "match_type": "chitchat_followup"
+            }
+        elif is_chitchat and len(utt_words) <= 3:
+            # حتى لو كانت الجولة الأولى، ردود الحالة الشخصية تصنف كدردشة حوارية ودودة
+            matched_intent = "greeting_skill"
+            confidence = 0.98
+            match_result = {
+                "intent": "greeting_skill",
+                "confidence": 0.98,
+                "utterance": utterance,
+                "match_type": "chitchat_followup"
+            }
+        else:
+            match_result = self.nlu_engine.parse_intent(utterance, context=current_context)
+            matched_intent = match_result.get("intent", "")
+            confidence = match_result.get("confidence", 0.0)
+
+        # 4. التحقق من عتبة الثقة المعتمدة (65% حد أدنى لمنع التوجيه العشوائي)
         is_confident = confidence >= self.min_confidence
 
         if is_confident and matched_intent and matched_intent != "fallback_skill":
